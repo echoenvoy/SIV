@@ -1,0 +1,13 @@
+{
+  "name": "siv-simulators",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "gps": "node gps-simulator.js",
+    "can": "node can-simulator.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.3.4"
+  }
+}

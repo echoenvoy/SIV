@@ -1,0 +1,124 @@
+services:
+  mosquitto:
+    build:
+      context: ./docker/mosquitto
+      dockerfile: Dockerfile
+    container_name: siv-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    networks:
+      - siv-net
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: siv-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: siv_db
+      MYSQL_USER: siv_user
+      MYSQL_PASSWORD: siv_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - siv-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: siv-backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: siv_db
+      DB_USER: siv_user
+      DB_PASS: siv_pass
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USER: siv_backend
+      MQTT_PASS: BackendPass2026
+      JWT_SECRET: siv_jwt_secret_2026
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-siv-alerts@example.com}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    networks:
+      - siv-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: siv-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3000/api
+      VITE_WS_URL: ws://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - siv-net
+    restart: unless-stopped
+
+  gps-simulator:
+    build:
+      context: ./simulators
+      dockerfile: Dockerfile.gps
+    container_name: siv-gps-simulator
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USER: siv_simulator
+      MQTT_PASS: SimPass2026
+    depends_on:
+      - mosquitto
+    networks:
+      - siv-net
+    restart: unless-stopped
+
+  can-simulator:
+    build:
+      context: ./simulators
+      dockerfile: Dockerfile.can
+    container_name: siv-can-simulator
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USER: siv_simulator
+      MQTT_PASS: SimPass2026
+    depends_on:
+      - mosquitto
+    networks:
+      - siv-net
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  siv-net:
+    driver: bridge

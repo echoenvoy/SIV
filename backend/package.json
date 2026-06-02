@@ -1,0 +1,25 @@
+{
+  "name": "siv-backend",
+  "version": "1.0.0",
+  "description": "Système d'Information Voyageur - Backend API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "mysql2": "^3.6.5",
+    "mqtt": "^5.3.4",
+    "ws": "^8.16.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.3.1",
+    "express-validator": "^7.0.1",
+    "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

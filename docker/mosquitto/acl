@@ -1,0 +1,9 @@
+user siv_backend
+topic read bus/+/gps
+topic read bus/+/can
+topic read bus/+/alerts
+topic read alertes/#
+
+user siv_simulator
+topic write bus/+/gps
+topic write bus/+/can
