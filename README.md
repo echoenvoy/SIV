@@ -159,7 +159,7 @@ docker compose up --build -d
 ### Stop the stack
 
 ```powershell
-cd "c:\Users\Hamza\Documents\#Projects\Project"
+cd "path to the repo\Project"
 docker compose down
 ```
 
