@@ -8,6 +8,7 @@
     "can": "node can-simulator.js"
   },
   "dependencies": {
-    "mqtt": "^5.3.4"
+    "mqtt": "^5.3.4",
+    "mysql2": "^3.9.1"
   }
 }

@@ -25,12 +25,23 @@ async function getLigne(req, res) {
 
 async function createLigne(req, res) {
   try {
-    const { nom, description, couleur } = req.body;
+    const { nom, description, couleur, station_ids } = req.body;
     const [result] = await pool.execute(
       'INSERT INTO lignes (nom, description, couleur) VALUES (?, ?, ?)',
       [nom, description || null, couleur || '#3B82F6']
     );
-    res.status(201).json({ id: result.insertId, message: 'Ligne créée' });
+    const ligneId = result.insertId;
+
+    if (Array.isArray(station_ids) && station_ids.length > 0) {
+      for (let i = 0; i < station_ids.length; i++) {
+        await pool.execute(
+          'UPDATE stations SET ligne_id = ?, ordre = ? WHERE id = ?',
+          [ligneId, i + 1, station_ids[i]]
+        );
+      }
+    }
+
+    res.status(201).json({ id: ligneId, message: 'Ligne créée' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -38,11 +49,29 @@ async function createLigne(req, res) {
 
 async function updateLigne(req, res) {
   try {
-    const { nom, description, couleur } = req.body;
+    const { nom, description, couleur, station_ids } = req.body;
+    const ligneId = req.params.id;
+
     await pool.execute(
       'UPDATE lignes SET nom=?, description=?, couleur=? WHERE id=?',
-      [nom, description, couleur, req.params.id]
+      [nom, description, couleur, ligneId]
     );
+
+    // Unassign old stations linked to this line
+    await pool.execute(
+      'UPDATE stations SET ligne_id = NULL WHERE ligne_id = ?',
+      [ligneId]
+    );
+
+    if (Array.isArray(station_ids) && station_ids.length > 0) {
+      for (let i = 0; i < station_ids.length; i++) {
+        await pool.execute(
+          'UPDATE stations SET ligne_id = ?, ordre = ? WHERE id = ?',
+          [ligneId, i + 1, station_ids[i]]
+        );
+      }
+    }
+
     res.json({ message: 'Ligne mise à jour' });
   } catch (err) {
     res.status(500).json({ error: err.message });

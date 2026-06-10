@@ -94,6 +94,11 @@ services:
       MQTT_PORT: 1883
       MQTT_USER: siv_simulator
       MQTT_PASS: SimPass2026
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: siv_db
+      DB_USER: siv_user
+      DB_PASS: siv_pass
     depends_on:
       - mosquitto
     networks:

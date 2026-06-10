@@ -146,7 +146,7 @@ Key behavior:
 ### Start the stack
 
 ```powershell
-cd "c:\Users\Hamza\Documents\#Projects\Project"
+cd "path to the repo\Project"
 docker compose up --build -d
 ```
 

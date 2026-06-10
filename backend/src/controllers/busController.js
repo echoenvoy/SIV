@@ -9,14 +9,22 @@ async function listBus(req, res) {
       FROM bus b
       LEFT JOIN lignes l ON b.ligne_id = l.id
       LEFT JOIN (
-        SELECT bus_id, latitude, longitude, vitesse, date_position
+        SELECT p1.bus_id, p1.latitude, p1.longitude, p1.vitesse, p1.date_position
         FROM positions p1
-        WHERE date_position = (SELECT MAX(date_position) FROM positions WHERE bus_id = p1.bus_id)
+        INNER JOIN (
+          SELECT bus_id, MAX(id) AS max_id
+          FROM positions
+          GROUP BY bus_id
+        ) p2 ON p1.id = p2.max_id
       ) p ON b.id = p.bus_id
       LEFT JOIN (
-        SELECT bus_id, fuel, engine_temp, doors, speed, date_reception
+        SELECT t1.bus_id, t1.fuel, t1.engine_temp, t1.doors, t1.speed, t1.date_reception
         FROM telemetrie t1
-        WHERE date_reception = (SELECT MAX(date_reception) FROM telemetrie WHERE bus_id = t1.bus_id)
+        INNER JOIN (
+          SELECT bus_id, MAX(id) AS max_id
+          FROM telemetrie
+          GROUP BY bus_id
+        ) t2 ON t1.id = t2.max_id
       ) t ON b.id = t.bus_id
     `);
     res.json(rows);
@@ -47,14 +55,22 @@ async function getActiveBuses(req, res) {
       FROM bus b
       LEFT JOIN lignes l ON b.ligne_id = l.id
       LEFT JOIN (
-        SELECT bus_id, latitude, longitude, vitesse, date_position
+        SELECT p1.bus_id, p1.latitude, p1.longitude, p1.vitesse, p1.date_position
         FROM positions p1
-        WHERE date_position = (SELECT MAX(date_position) FROM positions WHERE bus_id = p1.bus_id)
+        INNER JOIN (
+          SELECT bus_id, MAX(id) AS max_id
+          FROM positions
+          GROUP BY bus_id
+        ) p2 ON p1.id = p2.max_id
       ) p ON b.id = p.bus_id
       LEFT JOIN (
-        SELECT bus_id, fuel, engine_temp, doors, speed, date_reception
+        SELECT t1.bus_id, t1.fuel, t1.engine_temp, t1.doors, t1.speed, t1.date_reception
         FROM telemetrie t1
-        WHERE date_reception = (SELECT MAX(date_reception) FROM telemetrie WHERE bus_id = t1.bus_id)
+        INNER JOIN (
+          SELECT bus_id, MAX(id) AS max_id
+          FROM telemetrie
+          GROUP BY bus_id
+        ) t2 ON t1.id = t2.max_id
       ) t ON b.id = t.bus_id
       WHERE b.etat = 'actif'
     `);
@@ -108,7 +124,7 @@ async function getBusHistorique(req, res) {
     }
 
     query += ' ORDER BY date_position DESC LIMIT ? OFFSET ?';
-    params.push(pageSize, offset);
+    params.push(String(pageSize), String(offset));
     const [rows] = await pool.execute(query, params);
 
     let countQuery = 'SELECT COUNT(*) AS total FROM positions WHERE bus_id = ?';
@@ -138,12 +154,22 @@ async function getBusHistorique(req, res) {
 
 async function createBus(req, res) {
   try {
-    const { immatriculation, numero, ligne_id, etat, capacite } = req.body;
+    const { immatriculation, numero, ligne_id, etat, capacite, latitude, longitude } = req.body;
     const [result] = await pool.execute(
       'INSERT INTO bus (immatriculation, numero, ligne_id, etat, capacite) VALUES (?, ?, ?, ?, ?)',
       [immatriculation, numero, ligne_id || null, etat || 'inactif', capacite || 50]
     );
-    res.status(201).json({ id: result.insertId, message: 'Bus créé' });
+    const busId = result.insertId;
+
+    if (latitude !== undefined && latitude !== null && latitude !== '' &&
+        longitude !== undefined && longitude !== null && longitude !== '') {
+      await pool.execute(
+        'INSERT INTO positions (bus_id, latitude, longitude, vitesse, date_position) VALUES (?, ?, ?, 0, NOW())',
+        [busId, latitude, longitude]
+      );
+    }
+
+    res.status(201).json({ id: busId, message: 'Bus créé' });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Immatriculation déjà existante' });
     res.status(500).json({ error: err.message });
@@ -152,11 +178,20 @@ async function createBus(req, res) {
 
 async function updateBus(req, res) {
   try {
-    const { immatriculation, numero, ligne_id, etat, capacite } = req.body;
+    const { immatriculation, numero, ligne_id, etat, capacite, latitude, longitude } = req.body;
     await pool.execute(
       'UPDATE bus SET immatriculation=?, numero=?, ligne_id=?, etat=?, capacite=? WHERE id=?',
       [immatriculation, numero, ligne_id || null, etat, capacite, req.params.id]
     );
+
+    if (latitude !== undefined && latitude !== null && latitude !== '' &&
+        longitude !== undefined && longitude !== null && longitude !== '') {
+      await pool.execute(
+        'INSERT INTO positions (bus_id, latitude, longitude, vitesse, date_position) VALUES (?, ?, ?, 0, NOW())',
+        [req.params.id, latitude, longitude]
+      );
+    }
+
     res.json({ message: 'Bus mis à jour' });
   } catch (err) {
     res.status(500).json({ error: err.message });

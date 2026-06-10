@@ -31,7 +31,7 @@ router.post('/bus', auth, busCtrl.createBus);
 router.put('/bus/:id', auth, busCtrl.updateBus);
 router.delete('/bus/:id', auth, busCtrl.deleteBus);
 
-router.get('/lignes', auth, lignesCtrl.listLignes);
+router.get('/lignes', lignesCtrl.listLignes);
 router.get('/lignes/:id', auth, lignesCtrl.getLigne);
 router.post('/lignes', auth, lignesCtrl.createLigne);
 router.put('/lignes/:id', auth, lignesCtrl.updateLigne);

@@ -16,7 +16,7 @@ const initialLines = [
 
 export default function App() {
   const [stations, setStations] = useState([]);
-  const [selectedLine, setSelectedLine] = useState(1);
+  const [selectedLine, setSelectedLine] = useState('all');
   const [etaStations, setEtaStations] = useState([]);
   const [selectedBusId, setSelectedBusId] = useState(null);
   const [selectedBus, setSelectedBus] = useState(null);
@@ -39,8 +39,8 @@ export default function App() {
   const [stationsAdmin, setStationsAdmin] = useState([]);
   const [opsStatus, setOpsStatus] = useState('Sign in to unlock the operations panel.');
   const [adminTab, setAdminTab] = useState('bus');
-  const [busForm, setBusForm] = useState({ immatriculation: '', numero: '', ligne_id: 1, etat: 'inactif', capacite: 50 });
-  const [lineForm, setLineForm] = useState({ nom: '', description: '', couleur: '#3B82F6' });
+  const [busForm, setBusForm] = useState({ immatriculation: '', numero: '', ligne_id: 1, etat: 'inactif', capacite: 50, latitude: '', longitude: '' });
+  const [lineForm, setLineForm] = useState({ nom: '', description: '', couleur: '#3B82F6', station_ids: [] });
   const [stationForm, setStationForm] = useState({ nom: '', latitude: '', longitude: '', ligne_id: 1, ordre: 1 });
   const [crudError, setCrudError] = useState('');
   const [crudBusy, setCrudBusy] = useState('');
@@ -49,10 +49,14 @@ export default function App() {
   const [stationEditId, setStationEditId] = useState(null);
 
   useEffect(() => {
-    const loadStations = async () => {
+    const loadStationsAndLines = async () => {
       try {
-        const data = await apiFetch('/public/stations');
-        setStations(Array.isArray(data) ? data : []);
+        const [stationData, lineData] = await Promise.all([
+          apiFetch('/public/stations'),
+          apiFetch('/lignes'),
+        ]);
+        setStations(Array.isArray(stationData) ? stationData : []);
+        setLines(Array.isArray(lineData) ? lineData : []);
         setStatus('Live station feed ready');
         setConnectedAt(new Date().toISOString());
       } catch {
@@ -60,7 +64,7 @@ export default function App() {
       }
     };
 
-    loadStations();
+    loadStationsAndLines();
   }, []);
 
   useEffect(() => {
@@ -161,9 +165,18 @@ export default function App() {
     );
   }, [buses, busSearch]);
   const activeLineStations = useMemo(
-    () => stations.filter((station) => station.ligne_id === selectedLine),
+    () => {
+      if (selectedLine === 'all') return stations;
+      return stations.filter((station) => station.ligne_id === selectedLine);
+    },
     [stations, selectedLine],
   );
+
+  const displayedBuses = useMemo(() => {
+    const list = activeFleet.length ? activeFleet : buses;
+    if (selectedLine === 'all') return list;
+    return list.filter((bus) => bus.ligne_id === selectedLine);
+  }, [buses, activeFleet, selectedLine]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -232,15 +245,19 @@ export default function App() {
   const reloadBusHistory = async (pageOverride) => {
     if (!selectedBusId) return;
 
-    const query = new URLSearchParams();
-    if (historyRange.from) query.set('from', historyRange.from);
-    if (historyRange.to) query.set('to', historyRange.to);
-    query.set('page', String(pageOverride || historyMeta.page || 1));
-    query.set('limit', String(historyMeta.limit || 20));
+    try {
+      const query = new URLSearchParams();
+      if (historyRange.from) query.set('from', historyRange.from);
+      if (historyRange.to) query.set('to', historyRange.to);
+      query.set('page', String(pageOverride || historyMeta.page || 1));
+      query.set('limit', String(historyMeta.limit || 20));
 
-    const historyData = await apiFetch(`/bus/${selectedBusId}/historique${query.toString() ? `?${query.toString()}` : ''}`, token);
-    setSelectedBusHistory(Array.isArray(historyData?.data) ? historyData.data : []);
-    setHistoryMeta(historyData?.meta || historyMeta);
+      const historyData = await apiFetch(`/bus/${selectedBusId}/historique${query.toString() ? `?${query.toString()}` : ''}`, token);
+      setSelectedBusHistory(Array.isArray(historyData?.data) ? historyData.data : []);
+      setHistoryMeta(historyData?.meta || historyMeta);
+    } catch (error) {
+      setCrudError(error.message);
+    }
   };
 
   const runCrud = async (action, runner) => {
@@ -251,6 +268,7 @@ export default function App() {
       await reloadOperations();
     } catch (error) {
       setCrudError(error.message);
+      throw error;
     } finally {
       setCrudBusy('');
     }
@@ -267,7 +285,7 @@ export default function App() {
       }),
     ).then(() => {
       setBusEditId(null);
-      setBusForm({ immatriculation: '', numero: '', ligne_id: lines?.[0]?.id ?? 1, etat: 'inactif', capacite: 50 });
+      setBusForm({ immatriculation: '', numero: '', ligne_id: lines?.[0]?.id ?? 1, etat: 'inactif', capacite: 50, latitude: '', longitude: '' });
     });
   };
 
@@ -280,12 +298,14 @@ export default function App() {
       ligne_id: bus.ligne_id || lines?.[0]?.id || 1,
       etat: bus.etat || 'inactif',
       capacite: bus.capacite || 50,
+      latitude: bus.latitude || '',
+      longitude: bus.longitude || '',
     });
   };
 
   const cancelBusEdit = () => {
     setBusEditId(null);
-    setBusForm({ immatriculation: '', numero: '', ligne_id: lines?.[0]?.id ?? 1, etat: 'inactif', capacite: 50 });
+    setBusForm({ immatriculation: '', numero: '', ligne_id: lines?.[0]?.id ?? 1, etat: 'inactif', capacite: 50, latitude: '', longitude: '' });
   };
 
   const deleteBus = (id) => runCrud(`bus-delete-${id}`, () => apiFetch(`/bus/${id}`, token, { method: 'DELETE' }));
@@ -301,23 +321,28 @@ export default function App() {
       }),
     ).then(() => {
       setLineEditId(null);
-      setLineForm({ nom: '', description: '', couleur: '#3B82F6' });
+      setLineForm({ nom: '', description: '', couleur: '#3B82F6', station_ids: [] });
     });
   };
 
   const editLine = (line) => {
     setAdminTab('line');
     setLineEditId(line.id);
+    const assignedStations = stationsAdmin
+      .filter((station) => station.ligne_id === line.id)
+      .map((station) => station.id);
+
     setLineForm({
       nom: line.nom || '',
       description: line.description || '',
       couleur: line.couleur || '#3B82F6',
+      station_ids: assignedStations,
     });
   };
 
   const cancelLineEdit = () => {
     setLineEditId(null);
-    setLineForm({ nom: '', description: '', couleur: '#3B82F6' });
+    setLineForm({ nom: '', description: '', couleur: '#3B82F6', station_ids: [] });
   };
 
   const deleteLine = (id) => runCrud(`line-delete-${id}`, () => apiFetch(`/lignes/${id}`, token, { method: 'DELETE' }));
@@ -378,15 +403,23 @@ export default function App() {
               A starter web dashboard for the IoT-based SIV project. It shows public stations, simple line ETAs, and a clean operations view.
             </p>
             <div className="hero-actions">
-              {initialLines.map((line) => (
+              <button
+                className={`line-pill ${selectedLine === 'all' ? 'active' : ''}`}
+                onClick={() => setSelectedLine('all')}
+                style={{ '--line-color': '#4B5563' }}
+                type="button"
+              >
+                All Lines
+              </button>
+              {lines.map((line) => (
                 <button
                   key={line.id}
                   className={`line-pill ${selectedLine === line.id ? 'active' : ''}`}
                   onClick={() => setSelectedLine(line.id)}
-                  style={{ '--line-color': lineColors[line.id] }}
+                  style={{ '--line-color': line.couleur || lineColors[line.id] || '#3B82F6' }}
                   type="button"
                 >
-                  {line.name}
+                  {line.nom}
                 </button>
               ))}
             </div>
@@ -461,7 +494,11 @@ export default function App() {
               </div>
               <span className="panel-badge">Line {selectedLine}</span>
             </div>
-            <TransitMap buses={activeFleet.length ? activeFleet : buses} onSelectBus={loadSelectedBus} />
+            <TransitMap
+              buses={displayedBuses}
+              onSelectBus={loadSelectedBus}
+              stations={activeLineStations}
+            />
             <div className="route-rail">
               {activeLineStations.length > 0 ? (
                 activeLineStations.map((station, index) => (
@@ -658,6 +695,14 @@ export default function App() {
                     <span>Capacity</span>
                     <input type="number" value={busForm.capacite} onChange={(event) => setBusForm({ ...busForm, capacite: Number(event.target.value) })} />
                   </label>
+                  <label>
+                    <span>Latitude</span>
+                    <input value={busForm.latitude} onChange={(event) => setBusForm({ ...busForm, latitude: event.target.value })} placeholder="e.g. 33.5731" />
+                  </label>
+                  <label>
+                    <span>Longitude</span>
+                    <input value={busForm.longitude} onChange={(event) => setBusForm({ ...busForm, longitude: event.target.value })} placeholder="e.g. -7.5898" />
+                  </label>
                   <button className="primary-btn" type="submit" disabled={crudBusy.startsWith('bus-')}>
                     {crudBusy.startsWith('bus-update') || crudBusy === 'bus-create' ? 'Saving...' : busEditId ? 'Update bus' : 'Create bus'}
                   </button>
@@ -705,6 +750,27 @@ export default function App() {
                   <label>
                     <span>Color</span>
                     <input type="color" value={lineForm.couleur} onChange={(event) => setLineForm({ ...lineForm, couleur: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>Assign Stations</span>
+                    <select
+                      multiple
+                      value={lineForm.station_ids || []}
+                      onChange={(event) => {
+                        const selectedOptions = Array.from(event.target.selectedOptions, (option) => Number(option.value));
+                        setLineForm({ ...lineForm, station_ids: selectedOptions });
+                      }}
+                      style={{ height: '120px' }}
+                    >
+                      {stationsAdmin.map((station) => (
+                        <option key={station.id} value={station.id}>
+                          {station.nom} {station.ligne_nom ? `(${station.ligne_nom})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: 'var(--text-muted, #94a3b8)', marginTop: '4px' }}>
+                      Hold Ctrl (or Cmd) to select multiple stations.
+                    </small>
                   </label>
                   <button className="primary-btn" type="submit" disabled={crudBusy.startsWith('line-')}>
                     {crudBusy.startsWith('line-update') || crudBusy === 'line-create' ? 'Saving...' : lineEditId ? 'Update line' : 'Create line'}

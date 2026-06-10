@@ -1,4 +1,4 @@
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, Polyline, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -12,8 +12,18 @@ const busIcon = new L.Icon({
   shadowSize: [41, 41],
 });
 
-export default function TransitMap({ buses, center = [33.5731, -7.5898], zoom = 12, onSelectBus }) {
+export default function TransitMap({ buses, stations = [], center = [33.5731, -7.5898], zoom = 12, onSelectBus }) {
   const markers = buses.filter((bus) => bus.latitude && bus.longitude);
+
+  // Group stations by line ID to draw path lines separately for each line
+  const stationsByLine = {};
+  for (const station of stations) {
+    const lineId = station.ligne_id || 'unassigned';
+    if (!stationsByLine[lineId]) {
+      stationsByLine[lineId] = [];
+    }
+    stationsByLine[lineId].push(station);
+  }
 
   return (
     <div className="map-shell">
@@ -22,6 +32,39 @@ export default function TransitMap({ buses, center = [33.5731, -7.5898], zoom = 
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {Object.entries(stationsByLine).map(([lineId, lineStations]) => {
+          const coords = [...lineStations]
+            .sort((a, b) => a.ordre - b.ordre)
+            .map((station) => [Number(station.latitude), Number(station.longitude)]);
+          const lineColor = lineStations[0]?.ligne_couleur || '#3B82F6';
+
+          return coords.length > 1 ? (
+            <Polyline
+              key={`polyline-line-${lineId}`}
+              positions={coords}
+              pathOptions={{ color: lineColor, weight: 4, opacity: 0.8 }}
+            />
+          ) : null;
+        })}
+
+        {stations.map((station) => {
+          const lineColor = station.ligne_couleur || '#3B82F6';
+          return (
+            <CircleMarker
+              key={`station-${station.id}`}
+              center={[Number(station.latitude), Number(station.longitude)]}
+              radius={6}
+              pathOptions={{ fillColor: lineColor, color: '#FFFFFF', weight: 2, fillOpacity: 1 }}
+            >
+              <Popup>
+                <strong>{station.nom}</strong>
+                <p>Order: {station.ordre}</p>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
+
         {markers.map((bus) => (
           <Marker
             key={bus.id}
